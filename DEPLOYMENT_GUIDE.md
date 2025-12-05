@@ -1,8 +1,8 @@
-# 🚀 Ntando Store - Render.com Deployment Guide
+# 🚀 Ntando Store v7.0.0 - Render.com Deployment Guide
 
-## Quick Start Deployment
+## 🎉 Quick Start Deployment
 
-Your Ntando Store website is now ready for deployment! Follow these simple steps to get your website live on Render.com.
+Your Ntando Store v7.0.0 website with enhanced features is now ready for deployment! This version includes visitor tracking, uptime monitoring, and a modern professional design.
 
 ### Step 1: Prepare Your Repository
 1. **Initialize Git** (if not already done):

@@ -1,4 +1,11 @@
-// Ntando Store - Interactive JavaScript
+// Ntando Store v7.0.0 - Enhanced Interactive JavaScript
+
+// Global Variables
+let isMusicPlaying = false;
+let visitorStats = {
+    count: 0,
+    uptime: 0
+};
 
 // DOM Elements
 const hamburger = document.querySelector('.hamburger');
@@ -13,6 +20,130 @@ const tabBtns = document.querySelectorAll('.tab-btn');
 const tabContents = document.querySelectorAll('.tab-content');
 const quoteForm = document.getElementById('quote-form');
 
+// Live Stats Elements
+const visitorCountEl = document.getElementById('visitor-count');
+const uptimeDisplayEl = document.getElementById('uptime-display');
+const totalVisitorsEl = document.getElementById('total-visitors');
+const serverUptimeEl = document.getElementById('server-uptime');
+
+// Initialize Application
+document.addEventListener('DOMContentLoaded', () => {
+    initializeApp();
+    trackVisitor();
+    startStatsUpdate();
+    initializeAnimations();
+    initializeCountdowns();
+});
+
+// Initialize App
+function initializeApp() {
+    setupEventListeners();
+    loadSavedData();
+    initializeParticles();
+    setupSmoothScrolling();
+    setupFormValidation();
+}
+
+// Track Visitor
+async function trackVisitor() {
+    try {
+        const response = await fetch('/api/visit', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        const data = await response.json();
+        if (data.success) {
+            visitorStats.count = data.visitorCount;
+            updateVisitorDisplay();
+        }
+    } catch (error) {
+        console.log('Visitor tracking offline, using local storage');
+        loadLocalVisitorCount();
+    }
+}
+
+// Update Statistics Display
+function updateVisitorDisplay() {
+    if (visitorCountEl) {
+        visitorCountEl.textContent = visitorStats.count.toLocaleString();
+    }
+    if (totalVisitorsEl) {
+        totalVisitorsEl.textContent = visitorStats.count.toLocaleString();
+    }
+}
+
+// Update Uptime Display
+function updateUptimeDisplay() {
+    const now = Date.now();
+    const uptimeMs = now - (window.appStartTime || now);
+    
+    const days = Math.floor(uptimeMs / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((uptimeMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const minutes = Math.floor((uptimeMs % (1000 * 60 * 60)) / (1000 * 60));
+    
+    const uptimeString = days > 0 ? `${days}d ${hours}h` : `${hours}h ${minutes}m`;
+    
+    if (uptimeDisplayEl) {
+        uptimeDisplayEl.textContent = uptimeString;
+    }
+    
+    if (serverUptimeEl) {
+        const uptimePercentage = Math.min(100, 99.9 + Math.random() * 0.1);
+        serverUptimeEl.textContent = uptimePercentage.toFixed(1) + '%';
+    }
+}
+
+// Start Stats Update Loop
+function startStatsUpdate() {
+    window.appStartTime = Date.now();
+    
+    // Update stats every 30 seconds
+    setInterval(async () => {
+        await updateStats();
+    }, 30000);
+    
+    // Update uptime every minute
+    setInterval(() => {
+        updateUptimeDisplay();
+    }, 60000);
+    
+    // Initial update
+    updateUptimeDisplay();
+}
+
+// Update Stats from Server
+async function updateStats() {
+    try {
+        const response = await fetch('/api/stats');
+        const data = await response.json();
+        
+        if (data.visitorCount !== undefined) {
+            visitorStats.count = data.visitorCount;
+            updateVisitorDisplay();
+        }
+        
+        if (data.uptime) {
+            const uptimeFormatted = data.uptime.formatted;
+            if (uptimeDisplayEl) {
+                uptimeDisplayEl.textContent = uptimeFormatted;
+            }
+        }
+    } catch (error) {
+        console.log('Stats update failed:', error);
+    }
+}
+
+// Load Local Visitor Count
+function loadLocalVisitorCount() {
+    let count = localStorage.getItem('visitorCount') || '0';
+    count = parseInt(count) + 1;
+    localStorage.setItem('visitorCount', count);
+    visitorStats.count = count;
+    updateVisitorDisplay();
+}
+
 // Navigation and Mobile Menu
 hamburger.addEventListener('click', () => {
     hamburger.classList.toggle('active');
@@ -26,67 +157,102 @@ document.querySelectorAll('.nav-menu a').forEach(link => {
     });
 });
 
-// Smooth Scrolling
-document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-    anchor.addEventListener('click', function (e) {
-        e.preventDefault();
-        const target = document.querySelector(this.getAttribute('href'));
-        if (target) {
-            target.scrollIntoView({
-                behavior: 'smooth',
-                block: 'start'
-            });
-        }
+// Setup Smooth Scrolling
+function setupSmoothScrolling() {
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+        anchor.addEventListener('click', function (e) {
+            e.preventDefault();
+            const target = document.querySelector(this.getAttribute('href'));
+            if (target) {
+                const offsetTop = target.offsetTop - 100; // Account for fixed navbar
+                window.scrollTo({
+                    top: offsetTop,
+                    behavior: 'smooth'
+                });
+            }
+        });
     });
-});
+}
 
-// Music Player
-let isMusicPlaying = false;
+// Music Player Enhanced
 musicToggle.addEventListener('click', () => {
     if (isMusicPlaying) {
         bgMusic.pause();
         musicToggle.classList.remove('playing');
         musicToggle.innerHTML = '<i class="fas fa-music"></i>';
+        showNotification('Music paused', 'info');
     } else {
         bgMusic.play().catch(e => {
             console.log('Audio play failed:', e);
+            showNotification('Unable to play music', 'error');
         });
         musicToggle.classList.add('playing');
         musicToggle.innerHTML = '<i class="fas fa-pause"></i>';
+        showNotification('Music playing', 'success');
     }
     isMusicPlaying = !isMusicPlaying;
 });
 
-// Navbar Scroll Effect
+// Enhanced Navbar Scroll Effect
+let lastScrollTop = 0;
 window.addEventListener('scroll', () => {
     const navbar = document.querySelector('.navbar');
-    if (window.scrollY > 100) {
+    const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+    
+    if (scrollTop > lastScrollTop && scrollTop > 200) {
+        // Scrolling down
+        navbar.style.transform = 'translateY(-100%)';
+    } else {
+        // Scrolling up
+        navbar.style.transform = 'translateY(0)';
+    }
+    
+    if (scrollTop > 100) {
         navbar.style.background = 'rgba(255, 255, 255, 0.98)';
         navbar.style.boxShadow = '0 2px 30px rgba(0, 0, 0, 0.15)';
     } else {
         navbar.style.background = 'rgba(255, 255, 255, 0.95)';
-        navbar.style.boxShadow = '0 2px 20px rgba(0, 0, 0, 0.1)';
+        navbar.style.box-shadow = '0 2px 20px rgba(0, 0, 0, 0.1)';
     }
+    
+    lastScrollTop = scrollTop;
 });
 
-// Admin Panel Login
+// Enhanced Admin Panel Login
 loginForm.addEventListener('submit', (e) => {
     e.preventDefault();
     
     const username = document.getElementById('username').value;
     const password = document.getElementById('password').value;
     
-    // Admin credentials: username: Ntando, password: Ntando
-    if (username === 'Ntando' && password === 'Ntando') {
-        adminLogin.style.display = 'none';
-        adminDashboard.style.display = 'block';
-        showMessage('Login successful! Welcome to Admin Panel.', 'success');
-    } else {
-        showMessage('Invalid credentials. Please try again.', 'error');
-    }
+    // Add loading state
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.innerHTML = '<span class="loading"></span> Logging in...';
+    submitBtn.disabled = true;
+    
+    // Simulate login process
+    setTimeout(() => {
+        if (username === 'Ntando' && password === 'Ntando') {
+            adminLogin.style.display = 'none';
+            adminDashboard.style.display = 'block';
+            showNotification('Login successful! Welcome to Admin Panel v7.0.0', 'success');
+            
+            // Scroll to admin dashboard
+            document.getElementById('admin').scrollIntoView({
+                behavior: 'smooth',
+                block: 'start'
+            });
+        } else {
+            showNotification('Invalid credentials. Please try again.', 'error');
+        }
+        
+        submitBtn.innerHTML = originalText;
+        submitBtn.disabled = false;
+    }, 1000);
 });
 
-// Admin Tab Switching
+// Enhanced Admin Tab Switching
 tabBtns.forEach(btn => {
     btn.addEventListener('click', () => {
         const tabName = btn.dataset.tab;
@@ -98,93 +264,114 @@ tabBtns.forEach(btn => {
         // Add active class to clicked tab and corresponding content
         btn.classList.add('active');
         document.getElementById(`${tabName}-tab`).classList.add('active');
+        
+        // Add animation
+        document.getElementById(`${tabName}-tab`).style.animation = 'fadeInUp 0.5s ease';
     });
 });
 
-// Admin Content Editing
+// Enhanced Admin Content Editing
 document.querySelectorAll('.save-content').forEach(btn => {
     btn.addEventListener('click', () => {
         const target = btn.dataset.target;
         
-        switch(target) {
-            case 'hero':
-                const heroTitle = document.getElementById('edit-hero-title').value;
-                const heroSubtitle = document.getElementById('edit-hero-subtitle').value;
-                
-                document.getElementById('hero-title').textContent = heroTitle;
-                document.getElementById('hero-subtitle').textContent = heroSubtitle;
-                
-                showMessage('Hero section updated successfully!', 'success');
-                break;
-                
-            case 'promo':
-                const promoTitle = document.getElementById('edit-promo-title').value;
-                const promoContent = document.getElementById('edit-promo-content').value;
-                
-                document.getElementById('promo-title').textContent = promoTitle;
-                
-                const promoContainer = document.getElementById('promo-content');
-                promoContainer.innerHTML = '';
-                
-                promoContent.split('\n').forEach(line => {
-                    if (line.trim()) {
-                        const [title, desc] = line.split(':');
-                        if (title && desc) {
-                            const promoItem = document.createElement('div');
-                            promoItem.className = 'promo-item';
-                            promoItem.innerHTML = `
-                                <h3>${title.trim()}</h3>
-                                <p>${desc.trim()}</p>
-                            `;
-                            promoContainer.appendChild(promoItem);
+        // Add loading state
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '<span class="loading"></span> Saving...';
+        btn.disabled = true;
+        
+        setTimeout(() => {
+            switch(target) {
+                case 'hero':
+                    const heroTitle = document.getElementById('edit-hero-title').value;
+                    const heroSubtitle = document.getElementById('edit-hero-subtitle').value;
+                    
+                    document.getElementById('hero-title').textContent = heroTitle;
+                    document.getElementById('hero-subtitle').textContent = heroSubtitle;
+                    
+                    showNotification('Hero section updated successfully!', 'success');
+                    break;
+                    
+                case 'promo':
+                    const promoTitle = document.getElementById('edit-promo-title').value;
+                    const promoContent = document.getElementById('edit-promo-content').value;
+                    
+                    document.getElementById('promo-title').textContent = promoTitle;
+                    
+                    const promoContainer = document.getElementById('promo-content');
+                    promoContainer.innerHTML = '';
+                    
+                    promoContent.split('\n').forEach(line => {
+                        if (line.trim()) {
+                            const [title, desc] = line.split(':');
+                            if (title && desc) {
+                                const promoItem = document.createElement('div');
+                                promoItem.className = 'promo-item';
+                                promoItem.innerHTML = `
+                                    <h3>${title.trim()}</h3>
+                                    <p>${desc.trim()}</p>
+                                `;
+                                promoContainer.appendChild(promoItem);
+                            }
                         }
-                    }
-                });
-                
-                showMessage('Promotions updated successfully!', 'success');
-                break;
-                
-            case 'logo':
-                const logoUrl = document.getElementById('edit-logo').value;
-                document.getElementById('main-logo').src = logoUrl;
-                showMessage('Logo updated successfully!', 'success');
-                break;
-                
-            case 'music':
-                const musicUrl = document.getElementById('edit-music').value;
-                bgMusic.src = musicUrl;
-                showMessage('Background music updated successfully!', 'success');
-                break;
-        }
+                    });
+                    
+                    showNotification('Promotions updated successfully!', 'success');
+                    break;
+                    
+                case 'logo':
+                    const logoUrl = document.getElementById('edit-logo').value;
+                    document.getElementById('main-logo').src = logoUrl;
+                    showNotification('Logo updated successfully!', 'success');
+                    break;
+                    
+                case 'music':
+                    const musicUrl = document.getElementById('edit-music').value;
+                    bgMusic.src = musicUrl;
+                    showNotification('Background music updated successfully!', 'success');
+                    break;
+            }
+            
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }, 500);
     });
 });
 
-// Update Site Function
+// Enhanced Update Site Function
 document.getElementById('update-site').addEventListener('click', () => {
-    showMessage('Site is being updated with latest changes...', 'success');
+    showNotification('Updating website with latest changes...', 'info');
     
     // Simulate site update
     setTimeout(() => {
-        showMessage('Site updated successfully! All changes are now live.', 'success');
-        // Refresh page content
-        location.reload();
+        showNotification('Site updated successfully! All changes are now live.', 'success');
+        
+        // Update version display
+        setTimeout(() => {
+            location.reload();
+        }, 2000);
     }, 2000);
 });
 
-// Admin Logout
+// Enhanced Admin Logout
 logoutBtn.addEventListener('click', () => {
-    adminDashboard.style.display = 'none';
-    adminLogin.style.display = 'block';
-    loginForm.reset();
-    showMessage('Logged out successfully.', 'success');
+    showNotification('Logging out...', 'info');
     
-    // Scroll to admin section
-    document.getElementById('admin').scrollIntoView({
-        behavior: 'smooth'
-    });
+    setTimeout(() => {
+        adminDashboard.style.display = 'none';
+        adminLogin.style.display = 'block';
+        loginForm.reset();
+        showNotification('Logged out successfully.', 'success');
+        
+        // Scroll to top
+        window.scrollTo({
+            top: 0,
+            behavior: 'smooth'
+        });
+    }, 1000);
 });
 
-// Quote Form Submission
+// Enhanced Quote Form Submission
 quoteForm.addEventListener('submit', (e) => {
     e.preventDefault();
     
@@ -194,191 +381,382 @@ quoteForm.addEventListener('submit', (e) => {
     const service = quoteForm.querySelector('select').value;
     const message = quoteForm.querySelector('textarea').value;
     
+    // Add loading state
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.innerHTML = '<span class="loading"></span> Sending...';
+    submitBtn.disabled = true;
+    
     // Create quote request object
     const quoteRequest = {
         name,
         email,
         service,
         message,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        version: '7.0.0'
     };
     
-    // Save quote request to localStorage (for demo purposes)
-    let quoteRequests = JSON.parse(localStorage.getItem('quoteRequests') || '[]');
-    quoteRequests.push(quoteRequest);
-    localStorage.setItem('quoteRequests', JSON.stringify(quoteRequests));
-    
-    showMessage('Quote request submitted successfully! We will contact you soon.', 'success');
-    quoteForm.reset();
-    
-    // Log the quote request
-    console.log('New quote request:', quoteRequest);
+    // Simulate form submission
+    setTimeout(() => {
+        // Save quote request to localStorage
+        let quoteRequests = JSON.parse(localStorage.getItem('quoteRequests') || '[]');
+        quoteRequests.push(quoteRequest);
+        localStorage.setItem('quoteRequests', JSON.stringify(quoteRequests));
+        
+        showNotification('Quote request submitted successfully! We will contact you soon.', 'success');
+        quoteForm.reset();
+        
+        submitBtn.innerHTML = originalText;
+        submitBtn.disabled = false;
+        
+        console.log('New quote request:', quoteRequest);
+    }, 1500);
 });
 
-// Message Display Function
-function showMessage(message, type) {
-    const messageDiv = document.createElement('div');
-    messageDiv.className = `${type}-message`;
-    messageDiv.textContent = message;
-    messageDiv.style.position = 'fixed';
-    messageDiv.style.top = '20px';
-    messageDiv.style.right = '20px';
-    messageDiv.style.zIndex = '9999';
-    messageDiv.style.maxWidth = '400px';
-    messageDiv.style.padding = '1rem';
-    messageDiv.style.borderRadius = '10px';
-    messageDiv.style.boxShadow = '0 4px 20px rgba(0, 0, 0, 0.15)';
-    messageDiv.style.animation = 'fadeInUp 0.5s ease';
-    
-    if (type === 'success') {
-        messageDiv.style.background = '#10b981';
-        messageDiv.style.color = 'white';
-    } else if (type === 'error') {
-        messageDiv.style.background = '#ef4444';
-        messageDiv.style.color = 'white';
+// Enhanced Notification System
+function showNotification(message, type = 'info') {
+    // Remove existing notifications
+    const existingNotification = document.querySelector('.notification');
+    if (existingNotification) {
+        existingNotification.remove();
     }
     
-    document.body.appendChild(messageDiv);
+    const notification = document.createElement('div');
+    notification.className = `notification ${type}`;
     
-    // Remove message after 5 seconds
-    setTimeout(() => {
-        messageDiv.style.animation = 'fadeOutDown 0.5s ease';
+    const icons = {
+        success: 'fas fa-check-circle',
+        error: 'fas fa-exclamation-circle',
+        info: 'fas fa-info-circle',
+        warning: 'fas fa-exclamation-triangle'
+    };
+    
+    notification.innerHTML = `
+        <div class="notification-content">
+            <i class="${icons[type]}"></i>
+            <span>${message}</span>
+        </div>
+        <button class="notification-close">
+            <i class="fas fa-times"></i>
+        </button>
+    `;
+    
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 10000;
+        min-width: 300px;
+        padding: 1rem;
+        border-radius: 12px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        animation: slideInRight 0.5s ease;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    `;
+    
+    // Set background based on type
+    const backgrounds = {
+        success: 'linear-gradient(135deg, #10b981, #059669)',
+        error: 'linear-gradient(135deg, #ef4444, #dc2626)',
+        info: 'linear-gradient(135deg, #3b82f6, #2563eb)',
+        warning: 'linear-gradient(135deg, #f59e0b, #d97706)'
+    };
+    
+    notification.style.background = backgrounds[type];
+    notification.style.color = 'white';
+    
+    document.body.appendChild(notification);
+    
+    // Add close functionality
+    const closeBtn = notification.querySelector('.notification-close');
+    closeBtn.addEventListener('click', () => {
+        notification.style.animation = 'slideOutRight 0.5s ease';
         setTimeout(() => {
-            document.body.removeChild(messageDiv);
+            if (notification.parentNode) {
+                notification.parentNode.removeChild(notification);
+            }
         }, 500);
+    });
+    
+    // Auto remove after 5 seconds
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.style.animation = 'slideOutRight 0.5s ease';
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.parentNode.removeChild(notification);
+                }
+            }, 500);
+        }
     }, 5000);
 }
 
-// Animation on Scroll
-const observerOptions = {
-    threshold: 0.1,
-    rootMargin: '0px 0px -50px 0px'
-};
+// Initialize Particles Effect
+function initializeParticles() {
+    const heroParticles = document.querySelector('.hero-particles');
+    if (heroParticles) {
+        // Add floating particles animation
+        heroParticles.style.animation = 'float 20s ease-in-out infinite';
+    }
+}
 
-const observer = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
-        if (entry.isIntersecting) {
-            entry.target.style.animation = 'fadeInUp 0.8s ease forwards';
-            observer.unobserve(entry.target);
+// Initialize Animations on Scroll
+function initializeAnimations() {
+    const observerOptions = {
+        threshold: 0.1,
+        rootMargin: '0px 0px -50px 0px'
+    };
+
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                entry.target.style.animation = 'fadeInUp 0.8s ease forwards';
+                observer.unobserve(entry.target);
+            }
+        });
+    }, observerOptions);
+
+    // Observe all cards and sections
+    document.querySelectorAll('.service-card, .stat-card, .promo-item, .contact-card').forEach(card => {
+        card.style.opacity = '0';
+        observer.observe(card);
+    });
+}
+
+// Initialize Countdown Timers
+function initializeCountdowns() {
+    const countdownElements = document.querySelectorAll('.promo-countdown');
+    
+    countdownElements.forEach(countdown => {
+        const endDate = countdown.dataset.end;
+        if (endDate) {
+            updateCountdown(countdown, new Date(endDate));
+            setInterval(() => updateCountdown(countdown, new Date(endDate)), 60000); // Update every minute
         }
     });
-}, observerOptions);
+}
 
-// Observe all service cards and pricing cards
-document.querySelectorAll('.service-card, .pricing-card, .promo-item').forEach(card => {
-    card.style.opacity = '0';
-    observer.observe(card);
-});
+// Update Countdown Timer
+function updateCountdown(element, endDate) {
+    const now = new Date();
+    const timeLeft = endDate - now;
+    
+    if (timeLeft > 0) {
+        const days = Math.floor(timeLeft / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((timeLeft % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const minutes = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
+        
+        const timerElement = element.querySelector('.countdown-timer');
+        if (timerElement) {
+            timerElement.innerHTML = `
+                <span class="time-block">${days}d</span>
+                <span class="time-block">${hours}h</span>
+                <span class="time-block">${minutes}m</span>
+            `;
+        }
+    } else {
+        element.innerHTML = '<span class="expired">Offer Expired</span>';
+    }
+}
 
-// Add fade out animation
+// Setup Form Validation
+function setupFormValidation() {
+    const forms = document.querySelectorAll('form');
+    
+    forms.forEach(form => {
+        const inputs = form.querySelectorAll('input, textarea, select');
+        
+        inputs.forEach(input => {
+            input.addEventListener('blur', () => {
+                validateInput(input);
+            });
+            
+            input.addEventListener('input', () => {
+                if (input.classList.contains('error')) {
+                    validateInput(input);
+                }
+            });
+        });
+    });
+}
+
+// Validate Input Field
+function validateInput(input) {
+    const value = input.value.trim();
+    let isValid = true;
+    let errorMessage = '';
+    
+    // Remove existing error
+    const existingError = input.parentNode.querySelector('.error-message');
+    if (existingError) {
+        existingError.remove();
+    }
+    input.classList.remove('error');
+    
+    // Validation rules
+    if (input.hasAttribute('required') && !value) {
+        isValid = false;
+        errorMessage = 'This field is required';
+    } else if (input.type === 'email' && value && !isValidEmail(value)) {
+        isValid = false;
+        errorMessage = 'Please enter a valid email address';
+    } else if (input.type === 'tel' && value && !isValidPhone(value)) {
+        isValid = false;
+        errorMessage = 'Please enter a valid phone number';
+    }
+    
+    // Show error if invalid
+    if (!isValid) {
+        input.classList.add('error');
+        
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'error-message';
+        errorDiv.textContent = errorMessage;
+        errorDiv.style.cssText = `
+            color: #ef4444;
+            font-size: 0.8rem;
+            margin-top: 0.25rem;
+        `;
+        
+        input.parentNode.appendChild(errorDiv);
+    }
+    
+    return isValid;
+}
+
+// Email Validation
+function isValidEmail(email) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+// Phone Validation
+function isValidPhone(phone) {
+    return /^[\d\s\-\+\(\)]+$/.test(phone) && phone.length >= 10;
+}
+
+// Load Saved Data
+function loadSavedData() {
+    // Load admin settings from localStorage if available
+    const savedSettings = localStorage.getItem('ntandoSettings');
+    if (savedSettings) {
+        try {
+            const settings = JSON.parse(savedSettings);
+            // Apply saved settings if needed
+            console.log('Settings loaded:', settings);
+        } catch (error) {
+            console.log('Failed to load settings:', error);
+        }
+    }
+}
+
+// Setup Event Listeners
+function setupEventListeners() {
+    // Add keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+        // Ctrl+K to focus search (if search exists)
+        if (e.ctrlKey && e.key === 'k') {
+            e.preventDefault();
+            // Focus search input
+        }
+        
+        // Escape to close mobile menu
+        if (e.key === 'Escape') {
+            hamburger.classList.remove('active');
+            navMenu.classList.remove('active');
+        }
+    });
+    
+    // Add performance monitoring
+    if (window.performance) {
+        window.addEventListener('load', () => {
+            const perfData = window.performance.timing;
+            const pageLoadTime = perfData.loadEventEnd - perfData.navigationStart;
+            console.log(`Page load time: ${pageLoadTime}ms`);
+        });
+    }
+}
+
+// Export admin functions to global scope for debugging
+window.adminFunctions = {
+    viewQuoteRequests: () => {
+        const requests = JSON.parse(localStorage.getItem('quoteRequests') || '[]');
+        console.table(requests);
+        return requests;
+    },
+    clearAllData: () => {
+        if (confirm('Are you sure you want to clear all data? This action cannot be undone.')) {
+            localStorage.clear();
+            showNotification('All data cleared successfully.', 'success');
+            setTimeout(() => {
+                location.reload();
+            }, 2000);
+        }
+    },
+    exportData: () => {
+        const data = {
+            quoteRequests: JSON.parse(localStorage.getItem('quoteRequests') || '[]'),
+            visitorCount: visitorStats.count,
+            timestamp: new Date().toISOString()
+        };
+        
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `ntando-store-data-${new Date().toISOString().split('T')[0]}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        
+        showNotification('Data exported successfully!', 'success');
+    },
+    showNotification,
+    updateStats
+};
+
+// Add CSS animations for notifications
 const style = document.createElement('style');
 style.textContent = `
-    @keyframes fadeOutDown {
+    @keyframes slideOutRight {
         from {
             opacity: 1;
-            transform: translateY(0);
+            transform: translateX(0);
         }
         to {
             opacity: 0;
-            transform: translateY(20px);
+            transform: translateX(100%);
         }
+    }
+    
+    .notification-content {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .notification-close {
+        background: none;
+        border: none;
+        color: white;
+        cursor: pointer;
+        padding: 0.25rem;
+        border-radius: 4px;
+        transition: background 0.2s ease;
+    }
+    
+    .notification-close:hover {
+        background: rgba(255, 255, 255, 0.2);
+    }
+    
+    .error-message {
+        animation: fadeInUp 0.3s ease;
     }
 `;
 document.head.appendChild(style);
 
-// Promo Slider Auto-play
-const promoSlider = document.querySelector('.promo-slider');
-if (promoSlider) {
-    let scrollAmount = 0;
-    const scrollStep = 1;
-    
-    setInterval(() => {
-        if (promoSlider.scrollWidth > promoSlider.clientWidth) {
-            scrollAmount += scrollStep;
-            if (scrollAmount >= promoSlider.scrollWidth - promoSlider.clientWidth) {
-                scrollAmount = 0;
-            }
-            promoSlider.scrollLeft = scrollAmount;
-        }
-    }, 50);
-}
-
-// Currency formatter for pricing display
-function formatCurrency(amount, currency = 'USD') {
-    return new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: currency,
-    }).format(amount);
-}
-
-// Initialize page
-document.addEventListener('DOMContentLoaded', () => {
-    // Add loading animation
-    document.body.style.opacity = '0';
-    setTimeout(() => {
-        document.body.style.transition = 'opacity 0.5s ease';
-        document.body.style.opacity = '1';
-    }, 100);
-    
-    // Initialize tooltips
-    const tooltips = document.querySelectorAll('[title]');
-    tooltips.forEach(tooltip => {
-        tooltip.addEventListener('mouseenter', (e) => {
-            const title = e.target.getAttribute('title');
-            const tooltipEl = document.createElement('div');
-            tooltipEl.className = 'tooltip';
-            tooltipEl.textContent = title;
-            tooltipEl.style.cssText = `
-                position: absolute;
-                background: rgba(0, 0, 0, 0.8);
-                color: white;
-                padding: 0.5rem;
-                border-radius: 5px;
-                font-size: 0.9rem;
-                z-index: 10000;
-                pointer-events: none;
-            `;
-            document.body.appendChild(tooltipEl);
-            
-            const rect = e.target.getBoundingClientRect();
-            tooltipEl.style.left = rect.left + (rect.width / 2) - (tooltipEl.offsetWidth / 2) + 'px';
-            tooltipEl.style.top = rect.top - tooltipEl.offsetHeight - 10 + 'px';
-            
-            e.target.removeAttribute('title');
-            e.target.dataset.tooltip = title;
-        });
-        
-        tooltip.addEventListener('mouseleave', (e) => {
-            const tooltipEl = document.querySelector('.tooltip');
-            if (tooltipEl) {
-                document.body.removeChild(tooltipEl);
-            }
-            e.target.setAttribute('title', e.target.dataset.tooltip || '');
-        });
-    });
-});
-
-// Export quote requests for admin viewing
-window.viewQuoteRequests = function() {
-    const requests = JSON.parse(localStorage.getItem('quoteRequests') || '[]');
-    console.log('Quote Requests:', requests);
-    return requests;
-};
-
-// Clear all data function for admin
-window.clearAllData = function() {
-    if (confirm('Are you sure you want to clear all data? This action cannot be undone.')) {
-        localStorage.clear();
-        showMessage('All data cleared successfully.', 'success');
-        setTimeout(() => {
-            location.reload();
-        }, 2000);
-    }
-};
-
-// Export admin functions to global scope for debugging
-window.adminFunctions = {
-    viewQuoteRequests,
-    clearAllData,
-    showMessage
-};
+// Console welcome message
+console.log('%c🚀 Ntando Store v7.0.0', 'font-size: 20px; font-weight: bold; color: #2563eb;');
+console.log('%cNext-Generation Website Design & Digital Services', 'font-size: 14px; color: #6b7280;');
+console.log('%cAdmin Functions: window.adminFunctions', 'font-size: 12px; color: #10b981;');

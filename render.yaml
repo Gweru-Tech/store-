@@ -1,12 +1,12 @@
 services:
-  # Static Website Service
+  # Node.js Web Service
   - type: web
     name: ntandostore-website
-    env: static
+    env: node
     plan: free
-    buildCommand: "echo 'Static site - no build required'"
-    startCommand: "python -m http.server 10000"
-    staticPublishPath: .
+    buildCommand: "npm install"
+    startCommand: "node server.js"
+    healthCheckPath: "/health"
     headers:
       - path: "/*"
         name: "X-Frame-Options"
@@ -23,7 +23,3 @@ services:
       - path: "/*"
         name: "Content-Security-Policy"
         value: "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; img-src 'self' data: https://picsum.photos; font-src 'self' https://cdnjs.cloudflare.com; media-src 'self' https://www.soundhelix.com; connect-src 'self';"
-    routes:
-      - type: rewrite
-        source: "/*"
-        destination: "/index.html"
