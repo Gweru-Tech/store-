@@ -66,6 +66,51 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
+// Serve server management interface
+app.get('/server-management', (req, res) => {
+  res.sendFile(path.join(__dirname, 'server-management.html'));
+});
+
+// Bot Hosting API endpoints
+app.get('/api/bot-hosting/servers', (req, res) => {
+  // Simulate bot-hosting.net API response
+  res.json({
+    success: true,
+    servers: [
+      {
+        id: 'bh-001',
+        name: 'Main Discord Bot',
+        status: 'running',
+        type: 'discord-bot',
+        plan: 'premium',
+        specs: {
+          ram: '4GB',
+          storage: '50GB',
+          cpu: '4 Cores'
+        },
+        region: 'us-east',
+        uptime: '99.9%',
+        created: '2024-11-01T00:00:00Z'
+      },
+      {
+        id: 'bh-002',
+        name: 'Music Bot Server',
+        status: 'stopped',
+        type: 'discord-bot',
+        plan: 'free',
+        specs: {
+          ram: '512MB',
+          storage: '10GB',
+          cpu: '1 Core'
+        },
+        region: 'eu',
+        uptime: '95.2%',
+        created: '2024-11-15T00:00:00Z'
+      }
+    ]
+  });
+});
+
 // Health check endpoint for Render
 app.get('/health', (req, res) => {
   res.json({ 
