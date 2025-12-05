@@ -1,0 +1,32 @@
+{
+  "name": "ntandostore-website",
+  "version": "1.0.0",
+  "description": "Professional website for Ntando Store - Website Design & Digital Services",
+  "main": "index.html",
+  "scripts": {
+    "start": "python -m http.server 10000",
+    "dev": "python -m http.server 8080",
+    "build": "echo 'Build completed successfully'",
+    "deploy": "echo 'Ready for deployment to Render.com'"
+  },
+  "keywords": [
+    "website-design",
+    "digital-services",
+    "business",
+    "ecommerce",
+    "web-development"
+  ],
+  "author": "Ntando Store",
+  "license": "MIT",
+  "engines": {
+    "node": "14.x",
+    "python": "3.9.x"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ntandostore/website.git"
+  },
+  "homepage": "https://ntandostore.com",
+  "dependencies": {},
+  "devDependencies": {}
+}
