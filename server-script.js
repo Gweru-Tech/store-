@@ -1,4 +1,5 @@
-// Bot Hosting Server Management System
+// Bot Hosting Server Management System - Real API Integration
+// Integration with bot-hosting.net API
 
 // Global Variables
 let currentSection = 'dashboard';
@@ -7,10 +8,12 @@ let servers = [];
 let users = [];
 let marketplaceItems = [];
 
-// Configuration
+// Real API Configuration
 const API_CONFIG = {
     botHosting: {
         baseUrl: 'https://bot-hosting.net/api/v1',
+        panelUrl: 'https://control.bot-hosting.net',
+        accountUrl: 'https://bot-hosting.net/api',
         timeout: 10000
     },
     local: {
@@ -19,6 +22,34 @@ const API_CONFIG = {
         sessionKey: 'botHostingSession',
         settingsKey: 'botHostingSettings'
     }
+};
+
+// API Endpoints
+const ENDPOINTS = {
+    // Account endpoints
+    accountInfo: '/account',
+    validateAuth: '/account/validate',
+    coinsAmount: '/account/coins',
+    claimable: '/account/claimable',
+    
+    // Server endpoints  
+    serverList: '/servers',
+    serverInfo: '/server/{id}',
+    serverStart: '/server/{id}/start',
+    serverStop: '/server/{id}/stop',
+    serverRestart: '/server/{id}/restart',
+    serverDelete: '/server/{id}/delete',
+    serverCreate: '/servers/create',
+    serverLanguage: '/server/{id}/language',
+    
+    // Panel endpoints
+    panelServers: '/api/client/servers',
+    panelServerInfo: '/api/client/servers/{server}/resources',
+    panelDirectory: '/api/client/servers/{server}/files/list',
+    
+    // Billing endpoints
+    billingInfo: '/billing',
+    usageStats: '/billing/usage'
 };
 
 // Initialize Application
@@ -34,8 +65,163 @@ document.addEventListener('DOMContentLoaded', () => {
 function initializeApp() {
     showSection('dashboard');
     updateStats();
-    loadServers();
+    if (globalSession) {
+        loadRealServers();
+    } else {
+        loadServers();
+    }
     showNotification('Welcome to Bot Hosting Manager!', 'info');
+}
+
+// Real API Functions
+class BotHostingAPI {
+    constructor(authId, apiKey) {
+        this.authId = authId;
+        this.apiKey = apiKey;
+        this.baseUrl = API_CONFIG.botHosting.baseUrl;
+        this.panelUrl = API_CONFIG.botHosting.panelUrl;
+    }
+
+    async makeRequest(endpoint, options = {}) {
+        const url = endpoint.startsWith('http') ? endpoint : `${this.baseUrl}${endpoint}`;
+        const headers = {
+            'Content-Type': 'application/json',
+            'User-Agent': 'BotHostingManager/1.0.0'
+        };
+
+        if (this.authId) {
+            headers['Authorization'] = `Bearer ${this.authId}`;
+        }
+        if (this.apiKey) {
+            headers['X-API-Key'] = this.apiKey;
+        }
+
+        try {
+            const response = await fetch(url, {
+                ...options,
+                headers,
+                timeout: API_CONFIG.botHosting.timeout
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            return await response.json();
+        } catch (error) {
+            console.error(`API Error (${endpoint}):`, error);
+            throw error;
+        }
+    }
+
+    // Account methods
+    async getAccountInfo() {
+        return this.makeRequest(ENDPOINTS.accountInfo);
+    }
+
+    async validateAuth() {
+        return this.makeRequest(ENDPOINTS.validateAuth);
+    }
+
+    async getCoinsAmount() {
+        return this.makeRequest(ENDPOINTS.coinsAmount);
+    }
+
+    async getClaimableStatus() {
+        return this.makeRequest(ENDPOINTS.claimable);
+    }
+
+    // Server methods
+    async getServerList() {
+        try {
+            // Try panel API first
+            const panelServers = await this.makeRequest(`${this.panelUrl}${ENDPOINTS.panelServers}`);
+            return panelServers.data || [];
+        } catch (error) {
+            // Fallback to legacy API
+            return this.makeRequest(ENDPOINTS.serverList);
+        }
+    }
+
+    async getServerInfo(serverId) {
+        try {
+            // Try panel API
+            const serverInfo = await this.makeRequest(
+                `${this.panelUrl}${ENDPOINTS.panelServerInfo.replace('{server}', serverId)}`
+            );
+            return serverInfo.attributes || {};
+        } catch (error) {
+            // Fallback to legacy API
+            return this.makeRequest(ENDPOINTS.serverInfo.replace('{id}', serverId));
+        }
+    }
+
+    async startServer(serverId) {
+        try {
+            return await this.makeRequest(`${this.panelUrl}/api/client/servers/${serverId}/power`, {
+                method: 'POST',
+                body: JSON.stringify({ signal: 'start' })
+            });
+        } catch (error) {
+            return this.makeRequest(ENDPOINTS.serverStart.replace('{id}', serverId), {
+                method: 'POST'
+            });
+        }
+    }
+
+    async stopServer(serverId) {
+        try {
+            return await this.makeRequest(`${this.panelUrl}/api/client/servers/${serverId}/power`, {
+                method: 'POST',
+                body: JSON.stringify({ signal: 'stop' })
+            });
+        } catch (error) {
+            return this.makeRequest(ENDPOINTS.serverStop.replace('{id}', serverId), {
+                method: 'POST'
+            });
+        }
+    }
+
+    async restartServer(serverId) {
+        try {
+            return await this.makeRequest(`${this.panelUrl}/api/client/servers/${serverId}/power`, {
+                method: 'POST',
+                body: JSON.stringify({ signal: 'restart' })
+            });
+        } catch (error) {
+            return this.makeRequest(ENDPOINTS.serverRestart.replace('{id}', serverId), {
+                method: 'POST'
+            });
+        }
+    }
+
+    async deleteServer(serverId) {
+        return this.makeRequest(ENDPOINTS.serverDelete.replace('{id}', serverId), {
+            method: 'DELETE'
+        });
+    }
+
+    async changeServerLanguage(serverId, language) {
+        return this.makeRequest(ENDPOINTS.serverLanguage.replace('{id}', serverId), {
+            method: 'POST',
+            body: JSON.stringify({ language })
+        });
+    }
+
+    async getServerDirectory(serverId, directory = '/') {
+        return this.makeRequest(
+            `${this.panelUrl}${ENDPOINTS.panelDirectory.replace('{server}', serverId)}?directory=${encodeURIComponent(directory)}`
+        );
+    }
+
+    // Billing methods
+    async getBillingInfo() {
+        return this.makeRequest(ENDPOINTS.billingInfo);
+    }
+
+    async getUsageStats() {
+        return this.makeRequest(ENDPOINTS.usageStats);
+    }
 }
 
 // Setup Event Listeners
@@ -136,6 +322,11 @@ function showSection(sectionId) {
             case 'admin':
                 loadAdminData();
                 break;
+            case 'billing':
+                if (globalSession && globalSession.api) {
+                    loadBillingInfo();
+                }
+                break;
         }
     }
 }
@@ -147,6 +338,11 @@ function checkExistingSession() {
         try {
             globalSession = JSON.parse(session);
             updateSessionStatus(true, globalSession.username);
+            
+            // Initialize API instance
+            if (globalSession.authId || globalSession.apiKey) {
+                globalSession.api = new BotHostingAPI(globalSession.authId, globalSession.apiKey);
+            }
         } catch (error) {
             console.error('Invalid session:', error);
             localStorage.removeItem(API_CONFIG.local.sessionKey);
@@ -155,30 +351,35 @@ function checkExistingSession() {
 }
 
 function showGlobalLoginModal() {
-    document.getElementById('global-login-modal').classList.add('active');
+    document.getElementById('global-login-modal').classList.querySelector('active');
 }
 
-function globalLogin() {
+async function globalLogin() {
     const username = document.getElementById('global-username').value;
-    const apiKey = document.getElementById('global-apikey').value;
+    const authId = document.getElementById('global-apikey').value;
     const sharedAccess = document.getElementById('shared-access').checked;
 
-    if (!username || !apiKey) {
+    if (!username || !authId) {
         showNotification('Please fill in all fields', 'error');
         return;
     }
 
-    // Simulate API connection to bot-hosting.net
     showNotification('Connecting to Bot Hosting.net...', 'info');
 
-    setTimeout(() => {
+    try {
+        // Test the connection with provided credentials
+        const api = new BotHostingAPI(authId, null);
+        await api.validateAuth();
+        
         // Create session
         globalSession = {
             username: username,
-            apiKey: apiKey,
+            authId: authId,
+            apiKey: null, // Can be added later for advanced features
             sharedAccess: sharedAccess,
             connectedAt: new Date().toISOString(),
-            lastActivity: Date.now()
+            lastActivity: Date.now(),
+            api: api
         };
 
         // Save session
@@ -190,11 +391,14 @@ function globalLogin() {
         
         showNotification(`Successfully connected as ${username}!`, 'success');
         
-        // Load real data if available
-        if (sharedAccess) {
-            loadRealServers();
-        }
-    }, 2000);
+        // Load real data
+        await loadRealServers();
+        await loadAccountInfo();
+        
+    } catch (error) {
+        console.error('Login failed:', error);
+        showNotification('Failed to connect. Please check your credentials.', 'error');
+    }
 }
 
 function globalLogout() {
@@ -202,6 +406,9 @@ function globalLogout() {
         globalSession = null;
         localStorage.removeItem(API_CONFIG.local.sessionKey);
         updateSessionStatus(false);
+        
+        // Reload mock data when disconnected
+        loadServers();
         showNotification('Disconnected from Bot Hosting.net', 'info');
     }
 }
@@ -222,7 +429,89 @@ function updateSessionStatus(connected, username = null) {
     }
 }
 
-// Server Management
+// Real Server Management
+async function loadRealServers() {
+    if (!globalSession || !globalSession.api) {
+        loadServers();
+        return;
+    }
+
+    try {
+        showNotification('Loading servers from Bot Hosting.net...', 'info');
+        const serverList = await globalSession.api.getServerList();
+        
+        // Transform API response to our format
+        servers = serverList.map((server, index) => ({
+            id: server.identifier || `server-${index}`,
+            name: server.name || `Server ${index + 1}`,
+            type: determineServerType(server),
+            status: mapServerStatus(server),
+            plan: determineServerPlan(server),
+            specs: extractServerSpecs(server),
+            region: server.location || 'unknown',
+            createdAt: server.created_at || new Date().toISOString(),
+            uuid: server.uuid,
+            identifier: server.identifier
+        }));
+        
+        displayServers();
+        updateStats();
+        showNotification('Servers loaded successfully!', 'success');
+        
+    } catch (error) {
+        console.error('Failed to load real servers:', error);
+        showNotification('Failed to load servers. Using demo data.', 'warning');
+        loadServers(); // Fallback to demo data
+    }
+}
+
+function determineServerType(server) {
+    // Try to determine server type based on container or metadata
+    if (server.container) {
+        const image = server.container.image.toLowerCase();
+        if (image.includes('discord') || image.includes('bot')) return 'discord-bot';
+        if (image.includes('minecraft') || image.includes('game')) return 'game-server';
+        if (image.includes('nginx') || image.includes('apache')) return 'web-server';
+        if (image.includes('mysql') || (image.includes('postgres'))) return 'database';
+    }
+    return 'custom';
+}
+
+function mapServerStatus(server) {
+    // Map API status to our status format
+    if (server.attributes) {
+        const state = server.attributes.state;
+        if (state === 'running') return 'online';
+        if (state === 'stopped') return 'offline';
+        if (state === 'starting' || state === 'stopping') return 'loading';
+    }
+    return server.status || 'offline';
+}
+
+function determineServerPlan(server) {
+    // Determine plan based on limits or features
+    if (server.limits) {
+        const memory = server.limits.memory || 0;
+        if (memory >= 4096) return 'premium';
+        if (memory >= 1024) return 'standard';
+    }
+    return 'free';
+}
+
+function extractServerSpecs(server) {
+    const limits = server.limits || {};
+    const featureLimits = server.feature_limits || {};
+    
+    return {
+        ram: limits.memory ? `${Math.round(limits.memory / 1024)}MB` : '512MB',
+        storage: limits.disk ? `${Math.round(limits.disk / 1024)}GB` : '10GB',
+        cpu: limits.cpu ? `${limits.cpu} Core${limits.cpu > 1 ? 's' : ''}` : '1 Core',
+        databases: featureLimits.databases || 0,
+        allocations: featureLimits.allocations || 1
+    };
+}
+
+// Fallback Server Management (when not connected)
 function loadServers() {
     const storedServers = localStorage.getItem(API_CONFIG.local.serversKey);
     if (storedServers) {
@@ -246,7 +535,7 @@ function loadServers() {
                 type: 'game-server',
                 status: 'offline',
                 plan: 'premium',
-                specs: { ram: '4GB', storage: '50GB', cpu: '4 Cores' },
+                specs: { ram: '4GB', storage: '50GB', 'cpu': '4 Cores' },
                 region: 'eu',
                 createdAt: new Date().toISOString()
             }
@@ -310,7 +599,97 @@ function getServerTypeDisplay(type) {
     return types[type] || type;
 }
 
+async function toggleServer(serverId) {
+    const server = servers.find(s => s.id === serverId);
+    if (!server) return;
+
+    if (globalSession && globalSession.api) {
+        try {
+            showNotification(`${server.status === 'online' ? 'Stopping' : 'Starting'} server...`, 'info');
+            
+            if (server.status === 'online') {
+                await globalSession.api.stopServer(server.uuid || server.id);
+            } else {
+                await globalSession.api.startServer(server.uuid || server.id);
+            }
+            
+            // Wait a moment and refresh server status
+            setTimeout(async () => {
+                try {
+                    const updatedInfo = await globalSession.api.getServerInfo(server.uuid || server.id);
+                    server.status = mapServerStatus({ attributes: updatedInfo });
+                    displayServers();
+                    updateStats();
+                    showNotification(`Server ${server.name} ${server.status === 'online' ? 'started' : 'stopped'}!`, 'success');
+                } catch (error) {
+                    console.error('Failed to update server status:', error);
+                }
+            }, 2000);
+            
+        } catch (error) {
+            console.error('Failed to toggle server:', error);
+            showNotification('Failed to toggle server. Please try again.', 'error');
+        }
+    } else {
+        // Fallback to demo mode
+        server.status = server.status === 'online' ? 'offline' : 'online';
+        saveServers();
+        displayServers();
+        updateStats();
+        showNotification(`Server ${server.name} ${server.status === 'online' ? 'started' : 'stopped'}`, 'success');
+    }
+}
+
+// Account Information
+async function loadAccountInfo() {
+    if (!globalSession || !globalSession.api) return;
+
+    try {
+        const accountInfo = await globalSession.api.getAccountInfo();
+        const coinsAmount = await globalSession.api.getCoinsAmount();
+        const claimableStatus = await globalSession.api.getClaimableStatus();
+
+        // Update UI with real account data
+        document.getElementById('total-users').textContent = accountInfo.total_servers || '1';
+        
+        // Update billing section if available
+        if (accountInfo.plan) {
+            updateBillingInfo(accountInfo);
+        }
+        
+    } catch (error) {
+        console.error('Failed to load account info:', error);
+    }
+}
+
+// Enhanced Statistics
+function updateStats() {
+    const totalServers = servers.length;
+    const onlineServers = servers.filter(s => s.status === 'online').length;
+    const premiumServers = servers.filter(s => s.plan === 'premium').length;
+    
+    // Update stat displays
+    const statElements = {
+        'total-servers': totalServers,
+        'online-servers': onlineServers,
+        'total-users': users.length || 1, // At least the current user
+        'premium-servers': premiumServers
+    };
+    
+    Object.entries(statElements).forEach(([id, value]) => {
+        const 'element'.id;
+        if (element) {
+            element.textContent = value;
+        }
+    });
+}
+
+// Server Creation (Demo - real creation would be more complex)
 function showCreateServerModal() {
+    if (!globalSession) {
+        showNotification('Please connect to Bot Hosting.net first.', 'warning');
+        return;
+    }
     document.getElementById('create-server-modal').classList.add('active');
 }
 
@@ -325,6 +704,8 @@ function createServer() {
         return;
     }
 
+    // For now, this creates a demo server
+    // Real server creation would involve complex API calls
     const newServer = {
         id: `server-${Date.now()}`,
         name: name,
@@ -347,32 +728,17 @@ function createServer() {
     showNotification(`Server "${name}" created successfully!`, 'success');
 }
 
+// Utility Functions
 function getServerSpecs(plan) {
     const specs = {
         'free': { ram: '512MB', storage: '10GB', cpu: '1 Core' },
-        'premium': { ram: '4GB', storage: '50GB', cpu: '4 Cores' }
+        'premium': { ram: '4GB', storage: '50GB', 'cpu': '4 Cores' }
     };
     return specs[plan] || specs.free;
 }
 
-function manageServer(serverId) {
-    const server = servers.find(s => s.id === serverId);
-    if (server) {
-        showNotification(`Managing server: ${server.name}`, 'info');
-        // Here you would open a detailed server management interface
-    }
-}
-
-function toggleServer(serverId) {
-    const server = servers.find(s => s.id === serverId);
-    if (server) {
-        server.status = server.status === 'online' ? 'offline' : 'online';
-        saveServers();
-        displayServers();
-        updateStats();
-        
-        showNotification(`Server ${server.name} ${server.status === 'online' ? 'started' : 'stopped'}`, 'success');
-    }
+function saveServers() {
+    localStorage.setItem(API_CONFIG.local.serversKey, JSON.stringify(servers));
 }
 
 function filterServers() {
@@ -390,7 +756,7 @@ function filterServers() {
             filteredServers = servers.filter(s => s.status === 'online');
             break;
         case 'offline':
-            filteredServers = servers.filter(s => s.status === 'offline');
+            filteredServers = servers.filter((s) => s.status === 'offline');
             break;
     }
 
@@ -398,38 +764,27 @@ function filterServers() {
 }
 
 function refreshAllServers() {
-    showNotification('Refreshing server status...', 'info');
-    
-    // Simulate server refresh
-    setTimeout(() => {
-        servers.forEach(server => {
-            // Randomly update some servers to online for demo
-            if (Math.random() > 0.5) {
-                server.status = 'online';
-            }
-        });
+    if (globalSession && globalSession.api) {
+        loadRealServers();
+    } else {
+        showNotification('Refreshing server status...', 'info');
         
-        saveServers();
-        displayServers();
-        updateStats();
-        showNotification('Server status updated!', 'success');
-    }, 1500);
+        setTimeout(() => {
+            servers.forEach(server => {
+                if (Math.random() > 0.5) {
+                    server.status = 'online';
+                }
+            });
+            
+            saveServers();
+            displayServers();
+            updateStats();
+            showNotification('Server status updated!', 'success');
+        }, 1500);
+    }
 }
 
-function loadRealServers() {
-    if (!globalSession) return;
-    
-    showNotification('Loading servers from Bot Hosting.net...', 'info');
-    
-    // Simulate API call to bot-hosting.net
-    setTimeout(() => {
-        // This would be a real API call to bot-hosting.net
-        // For demo, we'll just use the existing servers
-        showNotification('Servers loaded successfully!', 'success');
-    }, 2000);
-}
-
-// Marketplace
+// Marketplace (Demo data - would integrate with real marketplace)
 function loadMarketplaceItems() {
     marketplaceItems = [
         {
@@ -497,7 +852,7 @@ function displayMarketplaceItems(items = marketplaceItems) {
             <div class="marketplace-content">
                 <h3 class="marketplace-title">${item.name}</h3>
                 <p class="marketplace-desc">${item.description}</p>
-                <div class="marketplace-price">${item.price}</div>
+div>
                 <button class="btn-primary" onclick="deployFromMarketplace('${item.id}')">
                     Deploy Now
                 </button>
@@ -536,28 +891,6 @@ function showMarketplace() {
     showSection('marketplace');
     document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
     document.querySelector('a[href="#marketplace"]').classList.add('active');
-}
-
-// Statistics
-function updateStats() {
-    const totalServers = servers.length;
-    const onlineServers = servers.filter(s => s.status === 'online').length;
-    const premiumServers = servers.filter(s => s.plan === 'premium').length;
-    
-    // Update stat displays
-    const statElements = {
-        'total-servers': totalServers,
-        'online-servers': onlineServers,
-        'total-users': users.length || 1, // At least the current user
-        'premium-servers': premiumServers
-    };
-    
-    Object.entries(statElements).forEach(([id, value]) => {
-        const element = document.getElementById(id);
-        if (element) {
-            element.textContent = value;
-        }
-    });
 }
 
 // Settings
@@ -639,7 +972,7 @@ function displayUsers() {
                 <p>${user.email}</p>
                 <span class="user-plan ${user.plan}">${user.plan}</span>
             </div>
-            <div class="user-stats">
+            <div class="-user-stats">
                 <span>${user.servers} servers</span>
             </div>
             <div class="user-actions">
@@ -658,10 +991,6 @@ function showUpgradeModal() {
 }
 
 // Utility Functions
-function saveServers() {
-    localStorage.setItem(API_CONFIG.local.serversKey, JSON.stringify(servers));
-}
-
 function loadStoredData() {
     // Load any stored data
     const settings = localStorage.getItem(API_CONFIG.local.settingsKey);
@@ -684,6 +1013,74 @@ function closeModal(modalId) {
     document.getElementById(modalId).classList.remove('active');
 }
 
+function manageServer(serverId) {
+    const server = servers.find(s => s.id === serverId);
+    if (server) {
+        showNotification(`Managing server: ${server.name}`, 'info');
+        // Here you would open a detailed server management interface
+    }
+}
+
+// Billing Integration
+async function loadBillingInfo() {
+    if (!globalSession || !globalSession.api) {
+        showNotification('Please connect to load billing info.', 'warning');
+        return;
+    }
+    
+    try {
+        const billingInfo = await globalSession.api.getBillingInfo();
+        const usageStats = await globalSession.api.getUsageStats();
+        
+        // Update billing UI with real data
+        if (billingInfo.plan || billingInfo.current_plan) {
+            updateBillingPlan(billingInfo);
+        }
+
+        if (usageStats.current_usage) {
+            updateUsageStats(usageStats);
+        }
+        
+    } catch (error) {
+        console.error('Failed to load billing info:', error);
+        showNotification('Failed to load billing info.', 'error');
+    }
+}
+
+function updateBillingPlan(billingData) {
+    // Update current plan display
+    const currentPlan = document.querySelector('.current-plan h4');
+    const planPrice = document.querySelector('.plan-price');
+    
+    if (currentPlan && billingData.plan_name) {
+        currentPlan.textContent = billingData.plan_name;
+    }
+    if (planPrice && billingData.price) {
+        planPrice.textContent = `$${billingData.price}/month`;
+    }
+    
+    // Update features
+    const featuresList = document.querySelector('.plan-features');
+    if (featuresList && billingData.features) {
+        featuresList.innerHTML = billingData.features.map(feature => 
+            `<li><i class="fas fa-check"></i> ${feature}</li>`
+        ).join('');
+    }
+}
+
+function updateUsageStats(usageData) {
+    // Update usage bars with real data
+    if (usageData.memory) {
+        const memoryUsage = usageData.memory;
+        const memoryBar = document.querySelector('.usage-bar');
+        if (memoryBar) {
+            const percentage = (memoryUsage.used / memoryUsage.total) * 100;
+            memoryBar.style.width = `${percentage}%`;
+        }
+    }
+}
+
+// Notification System
 function showNotification(message, type = 'info', duration = 5000) {
     // Remove existing notifications
     const existingNotification = document.querySelector('.notification');
@@ -711,7 +1108,8 @@ function showNotification(message, type = 'info', duration = 5000) {
     notification.style.cssText = `
         position: fixed;
         top: 100px;
-        right: 20px;
+        left: 50%;
+        transform: translateX(-50%);
         z-index: 10000;
         min-width: 300px;
         padding: 1rem;
@@ -770,14 +1168,14 @@ style.textContent = `
         }
         to {
             opacity: 0;
-            transform: translateX(100%);
+            transform: translate: translateX(100%);
         }
     }
     
     .notification-content {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: 0.0.5rem;
     }
     
     .user-card {
@@ -826,5 +1224,5 @@ window.botHostingManager = {
     session: () => globalSession
 };
 
-console.log('%c🤖 Bot Hosting Manager v1.0.0', 'font-size: 20px; font-weight: bold; color: #6366f1;');
+console.log('%c🤖 Bot Hosting Manager v2.0.0', 'font-size: 20px; font-weight: bold; color: #6366.f1;');
 console.log('%cServer Management System Ready', 'font-size: 14px; color: #8b5cf6;');
